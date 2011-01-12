@@ -8,5 +8,3 @@ mkinstalldirs
 config.log
 config.status
 autom4te.cache
-dkimproxy.spec
-sample-dkim-init-script.sh

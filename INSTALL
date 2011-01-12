@@ -1,4 +1,4 @@
-Copyright 2005-2011 Messiah College. All rights reserved.
+Copyright 2005-2007 Messiah College. All rights reserved.
 
    See the README file for an overview of DKIMproxy.
 
@@ -8,14 +8,15 @@ DKIMproxy Requirements
 
    DKIMproxy is written in Perl. It requires the following Perl modules:
 
-   * Mail::DKIM (version 0.34 or later)
+   * Mail::DKIM (version 0.29 or later)
+   * Error
    * Net::Server (version 0.91 or later; 0.93, 0.94 and 0.96 are known to work)
 
    The configure script described below will check for these Perl
    modules, and report an error if not found. You are on your own to
    install them. (Hint: use CPAN.)
 
-   Mail::DKIM can also be downloaded from http://dkimproxy.sourceforge.net/,
+   Mail::DKIM can also be downloaded from http://jason.long.name/dkimproxy/,
    which may have a more recent version than CPAN.
 
 
@@ -83,4 +84,4 @@ DKIMproxy Setup
    See http://dkimproxy.sourceforge.net/ for the details.
 
 
-This document last updated 2011-01-05.
+This document last updated 2009-04-30.

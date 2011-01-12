@@ -1,6 +1,8 @@
 perldir = $(bindir)
 perl_scripts = \
 	dkim_responder.pl \
+	dkimsign.pl \
+	dkimverify.pl \
 	dkimproxy.in \
 	dkimproxy.out
 

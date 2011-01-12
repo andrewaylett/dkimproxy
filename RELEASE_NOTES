@@ -1,25 +1,21 @@
-Release 1.4.1
+Release 1.3
 
-This is the release of version 1.4.1. This update release contains a
-.spec file to make it easier to build an RPM, and it removes the
-check for the "Error" module, which is not actually being used.
+This is the official release of version 1.3. This release contains
+a few minor bugfixes since version 1.2, and one new feature. New
+deployments should use this new version, but existing deployments are
+free to continue using 1.2. There is no urgent reason to upgrade.
 
 
-What's New (since 1.3)
+What's New (since 1.2)
 
-   There is a new option for setting the i= tag on generated
-   signatures. By default the i= tag is ommitted, but you could specify
-   a value using "dkim(i=whatever)" in your signature option. The new
-   option is to specify "dkim(i=$sender)" which will substitute in the
-   email address of the sender of this particular message.
-
-   The $sender macro, as it is called, is not the only new macro. See
-   the NEWS file for details.
-
-   Note: the minimum version requirement for the Mail::DKIM module,
-   which this program depends on, has changed from 0.29 to 0.34,
-   which means you might need to upgrade Mail::DKIM before you can
-   update dkimproxy to this version.
+   The "listid_map" option has been added. With this option, you can
+   have DKIMproxy generate signatures based on the "List-Id" header
+   of outgoing messages. This header is used if your server sends out
+   mailing list traffic. You can use this header to determine which
+   mailing list is being distributed, and have DKIMproxy generate
+   different signatures for different mailing lists. For more
+   information, run `perldoc scripts/dkimproxy.out' and look for
+   the "LIST-ID MAP FILE" section.
 
 
 Installing
@@ -64,5 +60,5 @@ Comments/Suggestions
   SourceForge forums.
 
   Finally, as a last resort, you can email the author directly,
-  Jason Long <jason@long.name>.
+  Jason Long <jlong@messiah.edu>.
 

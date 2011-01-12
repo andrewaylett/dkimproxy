@@ -1,7 +1,6 @@
 #!/usr/bin/perl -I../lib
 #
 # This file is part of DKIMproxy, an SMTP-proxy implementing DKIM.
-# Copyright (c) 2010 Jason Long.
 # Copyright (c) 2005-2009 Messiah College.
 # Written by Jason Long <jlong@messiah.edu>.
 #
@@ -240,11 +239,6 @@ sub parse_signature_options
 	return $options;
 }
 
-# This is only called at program startup time. It checks signature
-# options specified in the config file as part of the "signature"
-# option. It does not check signature options specified in a map file,
-# e.g. a sender map file or list-id map file.
-#
 sub check_signature_options
 {
 	my $self = shift;
@@ -462,44 +456,6 @@ sub split_by_commas
 	return @result;
 }
 
-sub interpret_macros
-{
-	my ($options, $signer, $key) = @_;
-	my $subst_fn;
-	$subst_fn = sub {
-			my ($macro) = @_;
-			if ($macro eq "key")
-			{
-				return $key;
-			}
-			elsif ($macro eq "sender")
-			{
-				my $sender = $signer->message_sender->address;
-				return $sender;
-			}
-			elsif ($macro =~ /^(.*)domain$/s)
-			{
-				my $tmp = $subst_fn->($1);
-				$tmp = $1 if $tmp =~ /\@([^\@]+)$/;
-				return $tmp;
-			}
-			else
-			{
-				die "Invalid macro found in signature option: \$$macro\n";
-			}
-		};
-
-	foreach my $option (qw(domain identity))
-	{
-		if (defined $options->{$option})
-		{
-			$options->{$option} =~ s/\$(\w+)/$subst_fn->($1)/es;
-			$options->{$option} =~ s/\$\$/\$/;
-		}
-	}
-	return $options;
-}
-
 sub get_signature_options
 {
 	my $signer = shift;
@@ -521,7 +477,6 @@ sub get_signature_options
 				}
 				my @result = split_by_commas($result);
 				return
-					map { interpret_macros($_, $signer, $key) }
 					map { +{ domain => $key, %$_ } }
 					map { parse_signature_options($_) } @result;
 			}
@@ -539,32 +494,27 @@ sub get_signature_options
 			$key = $1 if $key =~ /\@(.*)$/;
 			my @result = split_by_commas($result);
 			return
-				map { interpret_macros($_, $signer, $key) }
 				map { +{ domain => $key, %$_ } }
 				map { parse_signature_options($_) } @result;
 		}
 	}
 
+	# if multiple domains were specified in the --domain argument,
+	# pick one of those domains to use
 	my $domain = $domain_arg;
-	if (defined($domain))
+	my @domains = split /,/, $domain;
+	if (@domains > 1)
 	{
-		# if multiple domains were specified in the --domain argument,
-		# pick one of those domains to use
-		my @domains = split /,/, $domain;
-		if (@domains > 1)
-		{
-			# determine which of the available domains to use based
-			# on the domain of the "sender" of this message
-			my $sender_domain = $signer->message_sender->host;
-			$domain = best_domain($sender_domain, @domains)
-				or return ();
-		}
+		# determine which of the available domains to use based
+		# on the domain of the "sender" of this message
+		my $sender_domain = $signer->message_sender->host;
+		$domain = best_domain($sender_domain, @domains)
+			or return ();
 	}
 
-	return
-		map { interpret_macros($_, $signer, $domain) }
-		map { +{ domain => $domain, %$_ } }
-		@default_signatures;
+	return map {
+		+{ domain => $domain, %$_ }
+		} @default_signatures;
 }
 
 # my $signature_domain = best_domain($message_domain, @key_domains);
@@ -677,17 +627,10 @@ dkimproxy.out - SMTP proxy for adding DKIM signatures to email
 
 =head1 DESCRIPTION
 
-This is the "outbound" part of DKIMproxy, used for adding
-DKIM/DomainKey signatures to "outbound" email messages. This program
-listens on a particular TCP port (specified by the "listen" option),
-and sends the traffic it receives on to a destination TCP address/port
-(specified by the "relay" option), with messages getting modified to
-have a DKIM and/or DomainKeys signature added.
-
-DKIMproxy offers a number of options that determine how it generates
-signatures for the messages it processes. It can also vary its behavior
-according to the sender of the message it is processing. Read about
-the "sender map file" if you want to vary behavior according to sender.
+dkimproxy.out listens on the IP address and TCP port specified by its
+first argument (the "listen" port), and sends the traffic it receives
+onto the second argument (the "relay" port), with messages getting
+modified to have a DKIM or DomainKeys signature.
 
 =head1 OPTIONS
 
@@ -699,26 +642,13 @@ If specified, the server will run in the background.
 
 =item B<--domain=DOMAIN>
 
-This argument serves two purposes. First, it selects which messages
-(of all those DKIMproxy sees) that should be signed. Second, it
-specifies what d= value to put in the generated signatures.
-
-You can specify multiple domains by separating them with commas.
-If only one domain is specified, DKIMproxy will sign ALL messages, and
-it will use the specified domain as the d= value of all generated
-signatures.
-
-If two or more domains are specified, DKIMproxy will only sign messages
-which have a sender matching one of these domains. It will use the
-matched domain as the d= value of the generated signature.
-
-Please note that the d= value of the generated signature can also be
-specified using signature options (see L</"SIGNATURE OPTIONS"). The
-signature options will override the value specified here.
-
-Therefore, if you want to sign all messages, and you are specifying
-a d= value as part of the "signature" argument, or within a sender map
-file or list-id map file, you can omit the "domain" argument.
+Use this argument to specify what domain(s) you can sign for. You may
+specify multiple domains by separating them with commas. If a single
+domain is specified, DKIMproxy will sign every message it sees with
+that domain,
+if it can. If multiple domains are specified, DKIMproxy will try to
+match the domain to the message's sender, and only generate a signature
+that will match the sender's domain.
 
 =item B<--group=GROUP>
 
@@ -794,10 +724,10 @@ signature to the message. In addition, per-signature parameters can be
 specified by enclosing the comma-separated options in parenthesis after
 the signature type, e.g.
 
-  --signature=dkim(c=relaxed,key=/path/to/private.key)
+  --signature=dkim(c=relaxed,key=private.key)
 
 The syntax for specifying per-signature options is described in more
-detail in the section below titled L</"SIGNATURE OPTIONS">.
+detail in the section below titled L</"SENDER MAP FILE">.
 
 =item B<--user=USER>
 
@@ -839,76 +769,6 @@ is equivalent to
   dkimproxy.out --domain=example.org,example.com --keyfile=private.key \
                 --selector=postfix --signature=dkim
 
-=head1 SIGNATURE OPTIONS
-
-When specifying a signature type, you may optionally specify
-per-signature options within parenthesis after the signature type.
-E.g. if you say
-
-  dkim(d=example.com,c=relaxed,a=rsa-sha1)
-
-Then DKIMproxy will add a "DKIM" signature with domain C<example.com>,
-using the C<relaxed> canonicalization method,
-and the C<rsa-sha1> algorithm.
-
-The following signature options are recognized:
-
-=over
-
-=item key
-
-the private key file to use.
-You must specify the full path to the private key file.
-
-=item a, algorithm
-
-the algorithm to use
-
-=item c, method
-
-the canonicalization method to use
-
-=item d, domain
-
-the domain to use, default is to use whichever domain was matched
-(i.e. one of the domains specified in the --domain argument,
-or the domain found in the sender map file.)
-
-You may also use macros for this parameter, such as C<$senderdomain>.
-See the section on L</"MACROS"> for more information.
-
-=item i, identity
-
-the identity to use, default is to not include an i= parameter.
-
-You may also use macros for this parameter, such as C<$sender>.
-See the section on L</"MACROS"> for more information.
-
-=item s, selector
-
-the selector to use
-
-=back
-
-=head1 MACROS
-
-When specifying signature options, specifically the "domain"
-and "identity" options, you may want to substitute values from
-the message being signed. The following macros are available:
-
-=over
-
-=item $sender
-
-Substitutes the sender's email address (as found in the Sender or
-From header).
-
-=item $senderdomain
-
-Substitutes the domain part of the sender's email address.
-
-=back
-
 =head1 SENDER MAP FILE
 
 If you want to use different signature properties depending on the
@@ -927,21 +787,36 @@ and signature properties on the right. E.g.
 
 Right-hand values in a sender map file is a comma-separated list of
 signature types. Each signature type may have a comma-separated list
-of parameters enclosed in parenthesis. See L</"SIGNATURE OPTIONS"> for
-more information about the recognized parameters.
+of parameters enclosed in parenthesis. The following signature
+parameters are recognized:
 
-Please note that DKIMproxy tries hard to match a given message to an
-entry in the sender map file. If the full domain of the message's sender
-is not in the file, it tries each parent domain of the message's sender
-until a match is found.
-E.g. if the sender map file contains the following contents:
+=over
 
-  a.my.example     dkim(key=key1)
-  my.example       dkim(key=key2)
+=item key
 
-Then a message from user1@a.my.example will be signed with key key1.
-A message from user2@b.my.example will be signed with key2.
-A message from user3@your.example will not be signed.
+the private key file to use
+
+=item a, algorithm
+
+the algorithm to use
+
+=item c, method
+
+the canonicalization method to use
+
+=item d, domain
+
+the domain to use, default is to use the domain matched
+
+=item i, identity
+
+the identity to use, default is to not include an i= parameter
+
+=item s, selector
+
+the selector to use
+
+=back
 
 =head1 LIST-ID MAP FILE
 
@@ -954,9 +829,8 @@ Here is an example file:
   xorg-devel.lists.x.org       dkim(d=lists.x.org)
   dev.spamassassin.apache.org  dkim(d=apache.org)
 
-The syntax of the right-hand values is the same as a sender map file,
-i.e. a comma-separated list of signatures to add to the message.
-For more details, see L</"SIGNATURE OPTIONS"> above.
+For details on the syntax of the right-hand values, see
+L</"SENDER MAP FILE"> above.
 
 If no "List-Id" header is found in the message to be signed, or no
 entry in the map file matches the found "List-Id" header,
